@@ -1,0 +1,78 @@
+version: "3.8"
+
+services:
+    #custom image php and composer
+    app:
+        container_name: fsg-laravel-app
+        build:
+            args:
+                user: fsg
+                uid: 1000
+            context: .
+            dockerfile: Dockerfile
+        image: ireliagod/laravel-app
+        working_dir: /var/www
+        volumes:
+            - ./:/var/www
+        restart: unless-stopped
+        depends_on:
+            - redis
+            - queue
+        networks:
+            - docker-laravel
+    #nginx
+    nginx:
+        container_name: fsg-nginx
+        image: nginx:alpine
+        restart: unless-stopped
+        ports:
+            - "8989:80"
+        volumes:
+            - ./:/var/www
+            - ./docker/nginx/:/etc/nginx/conf.d/
+        networks:
+            - docker-laravel
+    #redis nao expor porta do redis em produção para segurança
+    redis:
+        container_name: fsg-redis
+        image: redis:latest
+        networks:
+            - docker-laravel
+    # container somente para rodar as filas do laravel
+    queue:
+        build:
+            args:
+                user: fsg
+                uid: 1000
+            context: .
+            dockerfile: Dockerfile
+        restart: always
+        command: "php artisan queue:work"
+        volumes:
+            - ./:/var/www
+        depends_on:
+            - redis
+        networks:
+            - docker-laravel
+
+    # db - mysql nao preciso expor porta aqui prq estão todos na mesma rede, nao exponha a porta em produção
+
+    mysql:
+        container_name: fsg-mysql
+        image: mysql:5.7.22
+        restart: unless-stopped
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE}
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_USER: ${DB_USERNAME}
+        volumes:
+            - ./.docker/mysql/dbdata:/var/lib/mysql
+        ports:
+            - "3307:3306"
+        networks:
+            - docker-laravel
+
+networks:
+    docker-laravel:
+        driver: bridge
